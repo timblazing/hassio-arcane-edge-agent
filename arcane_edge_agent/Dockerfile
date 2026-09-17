@@ -3,15 +3,17 @@
 ARG ARCANE_VERSION="2.12.0"
 FROM ghcr.io/getarcaneapp/agent:v${ARCANE_VERSION} AS upstream
 
-ARG BUILD_FROM
+ARG BUILD_FROM="ghcr.io/home-assistant/aarch64-base:3.19"
+# hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY --from=upstream /app/arcane-agent /usr/bin/arcane-agent
 
-RUN chmod +x /usr/bin/arcane-agent \
-    && /usr/bin/arcane-agent --version 2>/dev/null || true
+# Only make it executable; the agent has no --version flag and running it
+# here would try to start the server during the build.
+RUN chmod +x /usr/bin/arcane-agent
 
 COPY rootfs /
 
