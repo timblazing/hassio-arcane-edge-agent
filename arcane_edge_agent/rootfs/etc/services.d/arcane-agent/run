@@ -65,6 +65,12 @@ export GIN_MODE="release"
 # /data is the add-on's own writable folder. Home Assistant always mounts it,
 # it survives updates, and it is included in backups. Upstream defaults to
 # file:data/arcane.db relative to the working directory.
+mkdir -p /data
+if ! touch /data/.write-test 2>/dev/null; then
+    bashio::exit.nok "/data is not writable, so the agent cannot store its database. Try restarting the add-on; if that does not help, reinstall it."
+fi
+rm -f /data/.write-test
+
 export DATABASE_URL="file:/data/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
 
 bashio::log.info "Manager: ${manager_api_url} (transport: ${edge_transport})"
