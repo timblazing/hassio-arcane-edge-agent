@@ -1,0 +1,48 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-addon:
+    runs-on: ubuntu-latest
+    name: Lint add-on config
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./arcane_edge_agent"
+
+  lint-hadolint:
+    runs-on: ubuntu-latest
+    name: Lint Dockerfile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ./arcane_edge_agent/Dockerfile
+
+  lint-shellcheck:
+    runs-on: ubuntu-latest
+    name: Lint shell scripts
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        uses: ludeeus/action-shellcheck@master
+        env:
+          SHELLCHECK_OPTS: -s bash -e SC1008 -e SC2155
+        with:
+          ignore_paths: >-
+            arcane_edge_agent/rootfs/etc/services.d/arcane-agent/finish

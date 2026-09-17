@@ -1,0 +1,62 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Start the Arcane edge agent
+# ==============================================================================
+
+declare manager_api_url
+declare agent_token
+declare edge_transport
+
+bashio::log.info "Preparing to start the Arcane edge agent..."
+
+if ! bashio::config.has_value 'manager_api_url'; then
+    bashio::exit.nok "'manager_api_url' is not set. Enter the address of your Arcane manager (for example http://10.1.1.4:3552) in the add-on configuration."
+fi
+
+if ! bashio::config.has_value 'agent_token'; then
+    bashio::exit.nok "'agent_token' is not set. Create an edge environment in Arcane and paste the arc_... token into the add-on configuration."
+fi
+
+manager_api_url="$(bashio::config 'manager_api_url')"
+agent_token="$(bashio::config 'agent_token')"
+edge_transport="$(bashio::config 'edge_transport' 'poll')"
+
+# A trailing slash makes the agent build double-slashed API URLs against some
+# manager builds, so normalise it away before handing it over.
+manager_api_url="${manager_api_url%/}"
+
+if [[ "${manager_api_url}" != http://* && "${manager_api_url}" != https://* ]]; then
+    bashio::exit.nok "'manager_api_url' must start with http:// or https:// (got: ${manager_api_url})"
+fi
+
+if [[ "${agent_token}" != arc_* ]]; then
+    bashio::log.warning "The agent token does not start with 'arc_'; check that you copied the whole token."
+fi
+
+if ! bashio::fs.socket_exists '/var/run/docker.sock'; then
+    bashio::log.error "The Docker socket is not available inside this add-on."
+    bashio::exit.nok "Turn off Protection mode for this add-on (Settings > Add-ons > Arcane Edge Agent > three-dot menu), then restart it."
+fi
+
+export EDGE_AGENT="true"
+export AGENT_MODE="true"
+export EDGE_TRANSPORT="${edge_transport}"
+export MANAGER_API_URL="${manager_api_url}"
+export AGENT_TOKEN="${agent_token}"
+export DOCKER_HOST="unix:///var/run/docker.sock"
+export LOG_LEVEL="$(bashio::config 'log_level' 'info')"
+export ENVIRONMENT="production"
+export GIN_MODE="release"
+
+# Keep the agent's SQLite database in /config (the add-on's own config folder),
+# so it survives add-on updates and is included in Home Assistant backups.
+# Upstream defaults to file:data/arcane.db relative to the working directory.
+mkdir -p /config
+export DATABASE_URL="file:/config/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
+
+bashio::log.info "Manager: ${manager_api_url} (transport: ${edge_transport})"
+bashio::log.info "Starting the Arcane edge agent..."
+
+cd /config || bashio::exit.nok "Could not enter /config"
+exec /usr/bin/arcane-agent
