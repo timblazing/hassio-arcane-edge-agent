@@ -62,14 +62,13 @@ export LOG_LEVEL="$(bashio::config 'log_level' 'info')"
 export ENVIRONMENT="production"
 export GIN_MODE="release"
 
-# Keep the agent's SQLite database in /config (the add-on's own config folder),
-# so it survives add-on updates and is included in Home Assistant backups.
-# Upstream defaults to file:data/arcane.db relative to the working directory.
-mkdir -p /config
-export DATABASE_URL="file:/config/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
+# /data is the add-on's own writable folder. Home Assistant always mounts it,
+# it survives updates, and it is included in backups. Upstream defaults to
+# file:data/arcane.db relative to the working directory.
+export DATABASE_URL="file:/data/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
 
 bashio::log.info "Manager: ${manager_api_url} (transport: ${edge_transport})"
 bashio::log.info "Starting the Arcane edge agent..."
 
-cd /config || bashio::exit.nok "Could not enter /config"
+cd /data || bashio::exit.nok "Could not enter /data"
 exec /usr/bin/arcane-agent

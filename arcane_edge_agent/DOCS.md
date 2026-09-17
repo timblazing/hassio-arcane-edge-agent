@@ -35,15 +35,16 @@ Then fill in the add-on's **Configuration** tab:
 | `edge_transport` | no | `poll` (default) or `auto` |
 | `log_level` | no | `info` by default; use `debug` when troubleshooting |
 
-### Turn off Protection mode
+### Protection mode
 
-The agent manages Docker containers, so it needs access to the Docker socket.
+The agent needs the Docker socket to manage this machine's containers, and
 Home Assistant only passes it through when Protection mode is off:
 
 **Settings → Add-ons → Arcane Edge Agent → three-dot menu → Protection mode** (off).
 
-The add-on will stop with an explanatory message in the log if the socket
-isn't available.
+This is the same trade-off any add-on that manages Docker makes. Monitoring-only
+add-ons that just read stats do not need it. If the socket is missing the
+add-on stops and says so in the log.
 
 Then **Start** the add-on, and the environment turns online in Arcane.
 
