@@ -34,17 +34,30 @@ if [[ "${agent_token}" != arc_* ]]; then
     bashio::log.warning "The agent token does not start with 'arc_'; check that you copied the whole token."
 fi
 
-if ! bashio::fs.socket_exists '/var/run/docker.sock'; then
+# Home Assistant mounts the socket at /run/docker.sock; on most images
+# /var/run is a symlink to /run, but accept either rather than assume.
+docker_socket=""
+for candidate in /run/docker.sock /var/run/docker.sock; do
+    if bashio::fs.socket_exists "${candidate}"; then
+        docker_socket="${candidate}"
+        break
+    fi
+done
+
+if bashio::var.is_empty "${docker_socket}"; then
     bashio::log.error "The Docker socket is not available inside this add-on."
-    bashio::exit.nok "Turn off Protection mode for this add-on (Settings > Add-ons > Arcane Edge Agent > three-dot menu), then restart it."
+    bashio::log.error "The agent needs it to manage this machine's containers."
+    bashio::exit.nok "Turn off Protection mode (Settings > Add-ons > Arcane Edge Agent > three-dot menu > Protection mode), then restart this add-on."
 fi
+
+bashio::log.info "Using Docker socket at ${docker_socket}"
 
 export EDGE_AGENT="true"
 export AGENT_MODE="true"
 export EDGE_TRANSPORT="${edge_transport}"
 export MANAGER_API_URL="${manager_api_url}"
 export AGENT_TOKEN="${agent_token}"
-export DOCKER_HOST="unix:///var/run/docker.sock"
+export DOCKER_HOST="unix://${docker_socket}"
 export LOG_LEVEL="$(bashio::config 'log_level' 'info')"
 export ENVIRONMENT="production"
 export GIN_MODE="release"

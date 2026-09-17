@@ -1,26 +1,28 @@
 # The agent ships as a single static Go binary, so we copy it straight out of
 # the upstream image instead of downloading a release at build time.
+#
+# Both ARGs are declared before the first FROM so they are global, and
+# re-declared inside the stage that uses them, which is what Docker requires.
+ARG BUILD_FROM
 ARG ARCANE_VERSION="2.12.0"
+
 FROM ghcr.io/getarcaneapp/agent:v${ARCANE_VERSION} AS upstream
 
-ARG BUILD_FROM="ghcr.io/home-assistant/aarch64-base:3.19"
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY --from=upstream /app/arcane-agent /usr/bin/arcane-agent
-
-# Only make it executable; the agent has no --version flag and running it
-# here would try to start the server during the build.
-RUN chmod +x /usr/bin/arcane-agent
-
 COPY rootfs /
 
-# s6 needs the service scripts executable regardless of the checkout's mode bits.
-RUN chmod +x /etc/services.d/arcane-agent/run /etc/services.d/arcane-agent/finish
+# The agent has no --version flag, so only fix up permissions here; running it
+# would try to start the server during the build.
+RUN chmod +x /usr/bin/arcane-agent \
+    /etc/services.d/arcane-agent/run \
+    /etc/services.d/arcane-agent/finish
 
-# Build metadata, populated by the HA builder.
+# Build metadata, populated by the Home Assistant builder.
 ARG BUILD_ARCH
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION
