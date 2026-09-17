@@ -8,6 +8,12 @@ Running the agent as an add-on instead of a hand-started `docker run` container
 also clears the **"Unsupported system - Unsupported software"** warning that
 Home Assistant shows when it finds containers it doesn't manage.
 
+## Supported machines
+
+`aarch64` (64-bit Raspberry Pi 3/4/5 and most Home Assistant systems) and
+`amd64`. Home Assistant dropped 32-bit `armv7` support in 2025.12, so if your
+Pi runs a 32-bit Home Assistant image the add-on will not appear in the store.
+
 ## Installation
 
 1. In Home Assistant, go to **Settings → Add-ons → Add-on store**.
