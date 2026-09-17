@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: Arcane Edge Agent
-version: "2.12.0.1"
+version: "2.12.0.2"
 slug: arcane_edge_agent
 description: >-
   Connect this Home Assistant host to an Arcane manager as an edge environment

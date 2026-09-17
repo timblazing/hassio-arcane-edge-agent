@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.12.0.2
+
+- Set `PUID`/`PGID` to 0. In a container the agent drops to its built-in
+  non-root user (65532), which cannot write to `/data`, so it failed with
+  "open /data/arcane.db: permission denied". Add-ons run as root, and root is
+  what the Docker socket needs anyway.
+
 ## 2.12.0.1
 
 - Store the agent database in `/data` instead of `/config`. `/config` is not
