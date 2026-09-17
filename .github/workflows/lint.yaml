@@ -42,7 +42,7 @@ jobs:
       - name: Run shellcheck
         uses: ludeeus/action-shellcheck@master
         env:
+          # SC1008: the s6 shebang is /usr/bin/with-contenv bashio, not a shell
+          #         shellcheck knows. SC2155: assigning from a command
+          #         substitution on an export line is intentional here.
           SHELLCHECK_OPTS: -s bash -e SC1008 -e SC2155
-        with:
-          ignore_paths: >-
-            arcane_edge_agent/rootfs/etc/services.d/arcane-agent/finish

@@ -2,20 +2,26 @@ configuration:
   manager_api_url:
     name: Manager API URL
     description: >-
-      The address of your Arcane manager, reachable from this machine.
+      The address of your Arcane manager, as reachable from this machine.
       For example http://10.1.1.4:3552
   agent_token:
     name: Agent token
     description: >-
-      The arc_... token shown by Arcane when you create the edge environment.
+      The arc_... token Arcane showed you when you created the edge
+      environment.
   edge_transport:
     name: Transport
     description: >-
-      How the agent talks to the manager. Use poll if the manager cannot open
-      connections back to this machine, which is the usual case behind NAT
-      or a firewall.
-  log_level: 
+      How the agent reaches the manager. Keep this on poll if the manager
+      cannot open connections back to this machine, which is the usual case
+      behind NAT or a firewall.
+  log_level:
     name: Log level
     description: >-
       How much detail to write to the add-on log. Use debug when
       troubleshooting a connection problem.
+  analytics:
+    name: Send usage analytics
+    description: >-
+      Let the agent send anonymous usage data to the Arcane project. Off by
+      default; leaving it off also keeps rate-limit warnings out of the log.

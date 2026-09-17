@@ -1,0 +1,70 @@
+name: Check for new Arcane release
+
+on:
+  schedule:
+    # Weekly, Mondays at 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compare pinned version with the latest release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pinned="$(sed -n 's/^  ARCANE_VERSION: "\(.*\)"$/\1/p' arcane_edge_agent/build.yaml)"
+          latest="$(gh release view --repo getarcaneapp/arcane --json tagName --jq '.tagName' | sed 's/^v//')"
+
+          echo "Pinned: ${pinned}"
+          echo "Latest: ${latest}"
+          echo "pinned=${pinned}" >> "$GITHUB_OUTPUT"
+          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
+
+          if [ "${pinned}" = "${latest}" ]; then
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open an issue if a newer release exists
+        if: steps.check.outputs.outdated == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PINNED: ${{ steps.check.outputs.pinned }}
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          title="Update to Arcane ${LATEST}"
+
+          # Don't pile up duplicates for the same version.
+          if gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+               --search "in:title ${title}" --json title --jq '.[].title' \
+               | grep -qxF "${title}"; then
+            echo "Issue already open."
+            exit 0
+          fi
+
+          {
+            echo "The add-on ships Arcane \`${PINNED}\`, and \`${LATEST}\` is now out."
+            echo
+            echo "To update:"
+            echo
+            echo '```bash'
+            echo "./scripts/bump-version.sh ${LATEST}"
+            echo '```'
+            echo
+            echo "Then add a CHANGELOG entry and push. Release notes:"
+            echo "https://github.com/getarcaneapp/arcane/releases/tag/v${LATEST}"
+          } > /tmp/issue-body.md
+
+          gh issue create --repo "${GITHUB_REPOSITORY}" \
+            --title "${title}" --body-file /tmp/issue-body.md

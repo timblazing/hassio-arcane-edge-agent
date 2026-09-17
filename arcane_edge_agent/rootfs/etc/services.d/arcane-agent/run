@@ -7,9 +7,13 @@
 declare manager_api_url
 declare agent_token
 declare edge_transport
+declare docker_socket
 
 bashio::log.info "Preparing to start the Arcane edge agent..."
 
+# ------------------------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------------------------
 if ! bashio::config.has_value 'manager_api_url'; then
     bashio::exit.nok "'manager_api_url' is not set. Enter the address of your Arcane manager (for example http://10.1.1.4:3552) in the add-on configuration."
 fi
@@ -30,10 +34,20 @@ if [[ "${manager_api_url}" != http://* && "${manager_api_url}" != https://* ]]; 
     bashio::exit.nok "'manager_api_url' must start with http:// or https:// (got: ${manager_api_url})"
 fi
 
+# Pointing the add-on at the manager running on this same machine would make
+# the agent try to pair with itself, which fails in a confusing way.
+if [[ "${manager_api_url}" == *"//localhost"* || "${manager_api_url}" == *"//127.0.0.1"* ]]; then
+    bashio::log.warning "'manager_api_url' points at localhost, which means this add-on itself, not your Arcane manager."
+    bashio::log.warning "Use the manager's address on your network, for example http://10.1.1.4:3552"
+fi
+
 if [[ "${agent_token}" != arc_* ]]; then
     bashio::log.warning "The agent token does not start with 'arc_'; check that you copied the whole token."
 fi
 
+# ------------------------------------------------------------------------------
+# Docker socket
+# ------------------------------------------------------------------------------
 # Home Assistant mounts the socket at /run/docker.sock; on most images
 # /var/run is a symlink to /run, but accept either rather than assume.
 docker_socket=""
@@ -50,15 +64,31 @@ if bashio::var.is_empty "${docker_socket}"; then
     bashio::exit.nok "Turn off Protection mode (Settings > Add-ons > Arcane Edge Agent > three-dot menu > Protection mode), then restart this add-on."
 fi
 
-bashio::log.info "Using Docker socket at ${docker_socket}"
+# ------------------------------------------------------------------------------
+# Persistent state
+# ------------------------------------------------------------------------------
+# /data is the add-on's own folder: Home Assistant always mounts it writable,
+# it survives add-on updates, and it is included in backups. The agent's own
+# defaults point at /app/data, which lives in the container's writable layer
+# and is therefore discarded on every update, so redirect all of them here.
+if ! mkdir -p /data/projects /data/templates /data/git 2>/dev/null; then
+    bashio::exit.nok "Could not create the agent's folders under /data. Try restarting the add-on; if that does not help, reinstall it."
+fi
 
+if ! touch /data/.write-test 2>/dev/null; then
+    bashio::exit.nok "/data is not writable, so the agent cannot store its database. Try restarting the add-on; if that does not help, reinstall it."
+fi
+rm -f /data/.write-test
+
+# ------------------------------------------------------------------------------
+# Environment
+# ------------------------------------------------------------------------------
 export EDGE_AGENT="true"
 export AGENT_MODE="true"
 export EDGE_TRANSPORT="${edge_transport}"
 export MANAGER_API_URL="${manager_api_url}"
 export AGENT_TOKEN="${agent_token}"
 export DOCKER_HOST="unix://${docker_socket}"
-export LOG_LEVEL="$(bashio::config 'log_level' 'info')"
 export ENVIRONMENT="production"
 export GIN_MODE="release"
 
@@ -69,18 +99,27 @@ export GIN_MODE="release"
 export PUID="0"
 export PGID="0"
 
-# /data is the add-on's own writable folder. Home Assistant always mounts it,
-# it survives updates, and it is included in backups. Upstream defaults to
-# file:data/arcane.db relative to the working directory.
-mkdir -p /data
-if ! touch /data/.write-test 2>/dev/null; then
-    bashio::exit.nok "/data is not writable, so the agent cannot store its database. Try restarting the add-on; if that does not help, reinstall it."
-fi
-rm -f /data/.write-test
-
 export DATABASE_URL="file:/data/arcane.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2500)&_txlock=immediate"
+export PROJECTS_DIRECTORY="/data/projects"
+export TEMPLATES_DIRECTORY="/data/templates"
+export GIT_WORK_DIR="/data/git"
 
-bashio::log.info "Manager: ${manager_api_url} (transport: ${edge_transport})"
+export LOG_LEVEL="$(bashio::config 'log_level' 'info')"
+
+# The agent phones home to an upstream analytics endpoint, which also rate-limits
+# and logs a 429 error every few minutes. Off unless the user opts in.
+if bashio::config.true 'analytics'; then
+    export ANALYTICS_DISABLED="false"
+else
+    export ANALYTICS_DISABLED="true"
+fi
+
+# ------------------------------------------------------------------------------
+# Start
+# ------------------------------------------------------------------------------
+bashio::log.info "Manager:       ${manager_api_url}"
+bashio::log.info "Transport:     ${edge_transport}"
+bashio::log.info "Docker socket: ${docker_socket}"
 bashio::log.info "Starting the Arcane edge agent..."
 
 cd /data || bashio::exit.nok "Could not enter /data"

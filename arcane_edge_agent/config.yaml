@@ -1,24 +1,27 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: Arcane Edge Agent
-version: "2.12.0.2"
+version: "2.12.0.3"
 slug: arcane_edge_agent
 description: >-
-  Connect this Home Assistant host to an Arcane manager as an edge environment
+  Manage this machine's Docker containers from an Arcane manager
 url: https://github.com/timblazing/hassio-arcane-edge-agent
 image: ghcr.io/timblazing/hassio-arcane-edge-agent-{arch}
 arch:
   - aarch64
   - amd64
 init: false
-# The agent manages containers on this host, so it needs the Docker API.
+# The agent manages this host's containers, so it needs the Docker API.
+# Home Assistant only grants it when Protection mode is off.
 docker_api: true
 options:
   manager_api_url: ""
   agent_token: ""
   edge_transport: poll
   log_level: info
+  analytics: false
 schema:
   manager_api_url: url?
   agent_token: password?
   edge_transport: list(poll|auto)
   log_level: list(trace|debug|info|notice|warning|error|fatal)
+  analytics: bool
