@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.14.0
+
+- Update the bundled Arcane agent to v2.14.0. [Upstream release notes](https://github.com/getarcaneapp/arcane/releases/tag/v2.14.0).
+
 ## 2.12.0.3
 
 - Keep projects, templates and git checkouts in `/data` alongside the database.

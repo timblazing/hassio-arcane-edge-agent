@@ -72,9 +72,14 @@ container, which cannot write to the add-on's own data folder. The add-on pins
 requires.
 
 **Versioning.** The add-on version tracks the upstream Arcane release it ships
-(`2.12.0`), with a fourth number for add-on-only changes (`2.12.0.3`). The
+(`2.14.0`), with a fourth number for add-on-only changes. The
 agent binary is copied from the official `ghcr.io/getarcaneapp/agent` image at
 build time, so nothing is downloaded when the add-on starts.
+
+Home Assistant owns the add-on container. Install its agent updates from Home
+Assistant's add-on update screen, rather than using Arcane's environment update
+button to replace this container. You can still use Arcane to manage the other
+containers and images on this machine.
 
 ## Development
 
@@ -84,7 +89,11 @@ build time, so nothing is downloaded when the add-on starts.
 ```
 
 The script checks that the upstream image tag exists before pinning to it. A
-weekly workflow opens an issue when a newer Arcane release appears.
+daily workflow detects newer stable Arcane releases, verifies the agent image,
+bumps the add-on version, commits the change to `main`, and dispatches the
+validation and image build workflows. Home Assistant then offers the published
+version as an add-on update. GitHub Actions must have permission to write to
+`main` for automatic publishing.
 
 ## License
 

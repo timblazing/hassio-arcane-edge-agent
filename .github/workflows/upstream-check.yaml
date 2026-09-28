@@ -1,70 +1,91 @@
-name: Check for new Arcane release
+name: Publish new Arcane agent releases
 
 on:
   schedule:
-    # Weekly, Mondays at 06:00 UTC.
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: arcane-upstream-release
+  cancel-in-progress: false
+
 permissions:
-  contents: read
-  issues: write
+  contents: write
+  actions: write
 
 jobs:
-  check:
+  update:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Compare pinned version with the latest release
+      - name: Find a newer stable release
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           pinned="$(sed -n 's/^  ARCANE_VERSION: "\(.*\)"$/\1/p' arcane_edge_agent/build.yaml)"
           latest="$(gh release view --repo getarcaneapp/arcane --json tagName --jq '.tagName' | sed 's/^v//')"
 
-          echo "Pinned: ${pinned}"
-          echo "Latest: ${latest}"
-          echo "pinned=${pinned}" >> "$GITHUB_OUTPUT"
-          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
-
-          if [ "${pinned}" = "${latest}" ]; then
-            echo "outdated=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "outdated=true" >> "$GITHUB_OUTPUT"
+          if [[ ! "$pinned" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected Arcane version: pinned=$pinned latest=$latest" >&2
+            exit 1
           fi
 
-      - name: Open an issue if a newer release exists
+          echo "Pinned: $pinned"
+          echo "Latest stable release: $latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+          if [[ "$latest" == "$pinned" ]]; then
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$(printf '%s\n%s\n' "$pinned" "$latest" | sort -V | tail -n 1)" == "$latest" ]]; then
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Latest upstream release is older than the bundled agent; skipping."
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump and publish the add-on version
+        if: steps.check.outputs.outdated == 'true'
+        env:
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          set -euo pipefail
+          ./scripts/bump-version.sh "$LATEST"
+
+          python3 - "$LATEST" <<'PY'
+          from pathlib import Path
+          import sys
+
+          version = sys.argv[1]
+          path = Path("arcane_edge_agent/CHANGELOG.md")
+          changelog = path.read_text()
+          heading = "# Changelog\n\n"
+          if not changelog.startswith(heading):
+              raise SystemExit("Unexpected changelog format")
+          entry = (
+              f"## {version}\n\n"
+              f"- Update the bundled Arcane agent to v{version}. "
+              f"[Upstream release notes](https://github.com/getarcaneapp/arcane/releases/tag/v{version}).\n\n"
+          )
+          path.write_text(heading + entry + changelog[len(heading):])
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add arcane_edge_agent/Dockerfile arcane_edge_agent/build.yaml arcane_edge_agent/config.yaml arcane_edge_agent/CHANGELOG.md
+          git commit -m "Update Arcane agent to v${LATEST}"
+          git push origin HEAD:main
+
+      # Commits made with GITHUB_TOKEN do not trigger push workflows. Explicitly
+      # dispatch the existing validation and image publishing workflows.
+      - name: Run validation and image publishing
         if: steps.check.outputs.outdated == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PINNED: ${{ steps.check.outputs.pinned }}
-          LATEST: ${{ steps.check.outputs.latest }}
         run: |
-          title="Update to Arcane ${LATEST}"
-
-          # Don't pile up duplicates for the same version.
-          if gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
-               --search "in:title ${title}" --json title --jq '.[].title' \
-               | grep -qxF "${title}"; then
-            echo "Issue already open."
-            exit 0
-          fi
-
-          {
-            echo "The add-on ships Arcane \`${PINNED}\`, and \`${LATEST}\` is now out."
-            echo
-            echo "To update:"
-            echo
-            echo '```bash'
-            echo "./scripts/bump-version.sh ${LATEST}"
-            echo '```'
-            echo
-            echo "Then add a CHANGELOG entry and push. Release notes:"
-            echo "https://github.com/getarcaneapp/arcane/releases/tag/v${LATEST}"
-          } > /tmp/issue-body.md
-
-          gh issue create --repo "${GITHUB_REPOSITORY}" \
-            --title "${title}" --body-file /tmp/issue-body.md
+          gh workflow run lint.yaml --ref main
+          gh workflow run builder.yaml --ref main

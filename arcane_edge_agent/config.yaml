@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: Arcane Edge Agent
-version: "2.12.0.3"
+version: "2.14.0"
 slug: arcane_edge_agent
 description: >-
   Manage this machine's Docker containers from an Arcane manager
