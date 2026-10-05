@@ -4,7 +4,7 @@
 # Both ARGs are declared before the first FROM so they are global, and
 # re-declared inside the stage that uses them, which is what Docker requires.
 ARG BUILD_FROM
-ARG ARCANE_VERSION="2.14.0"
+ARG ARCANE_VERSION="2.15.0"
 
 FROM ghcr.io/getarcaneapp/agent:v${ARCANE_VERSION} AS upstream
 
