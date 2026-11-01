@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.17.2
+
+- Update the bundled Arcane agent to v2.17.2. [Upstream release notes](https://github.com/getarcaneapp/arcane/releases/tag/v2.17.2).
+
 ## 2.17.1
 
 - Update the bundled Arcane agent to v2.17.1. [Upstream release notes](https://github.com/getarcaneapp/arcane/releases/tag/v2.17.1).
