@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Read add-on information
     outputs:
-      name: ${{ steps.info.outputs.name }}
-      description: ${{ steps.info.outputs.description }}
-      version: ${{ steps.info.outputs.version }}
+      name: ${{ steps.normalize.outputs.name }}
+      description: ${{ steps.normalize.outputs.description }}
+      version: ${{ steps.normalize.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -31,6 +31,24 @@ jobs:
         uses: home-assistant/actions/helpers/info@master
         with:
           path: "./arcane_edge_agent"
+
+      # The info helper returns JSON-quoted strings ("3.0.1.1"); strip the
+      # quotes before they end up in image tags and labels.
+      - name: Normalize add-on information
+        id: normalize
+        env:
+          NAME: ${{ steps.info.outputs.name }}
+          DESCRIPTION: ${{ steps.info.outputs.description }}
+          VERSION: ${{ steps.info.outputs.version }}
+        run: |
+          set -euo pipefail
+          unquote() { jq -r '.' <<< "$1" 2>/dev/null || printf '%s' "$1"; }
+          {
+            echo "name=$(unquote "$NAME")"
+            echo "description=$(unquote "$DESCRIPTION")"
+            echo "version=$(unquote "$VERSION")"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
