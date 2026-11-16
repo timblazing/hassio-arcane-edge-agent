@@ -7,13 +7,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   lint-addon:
     runs-on: ubuntu-latest
     name: Lint add-on config
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Home Assistant add-on linter
         uses: frenck/action-addon-linter@v2
@@ -25,10 +28,10 @@ jobs:
     name: Lint Dockerfile
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run hadolint
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: ./arcane_edge_agent/Dockerfile
 
@@ -37,12 +40,15 @@ jobs:
     name: Lint shell scripts
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
+      # The s6 scripts' shebang is /command/with-contenv bashio, which
+      # shellcheck does not recognise (SC1008); each file declares
+      # "shellcheck shell=bash" instead.
       - name: Run shellcheck
-        uses: ludeeus/action-shellcheck@master
-        env:
-          # SC1008: the s6 shebang is /usr/bin/with-contenv bashio, not a shell
-          #         shellcheck knows. SC2155: assigning from a command
-          #         substitution on an export line is intentional here.
-          SHELLCHECK_OPTS: -s bash -e SC1008 -e SC2155
+        run: |
+          shellcheck --version
+          shellcheck -s bash -e SC1008 \
+            arcane_edge_agent/rootfs/etc/s6-overlay/s6-rc.d/arcane-agent/run \
+            arcane_edge_agent/rootfs/etc/s6-overlay/s6-rc.d/arcane-agent/finish \
+            scripts/*.sh

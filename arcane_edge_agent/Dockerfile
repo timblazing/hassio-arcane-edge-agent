@@ -3,42 +3,36 @@
 #
 # Both ARGs are declared before the first FROM so they are global, and
 # re-declared inside the stage that uses them, which is what Docker requires.
-ARG BUILD_FROM
+# Supervisor no longer passes BUILD_FROM, so it needs a default.
+ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
 ARG ARCANE_VERSION="3.0.1"
 
 FROM ghcr.io/getarcaneapp/agent:v${ARCANE_VERSION} AS upstream
 
-# hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# sqlite reads the database's schema version at startup so the run script can
+# spot a database too old for Arcane 3 to upgrade.
+# hadolint ignore=DL3018
+RUN apk add --no-cache sqlite
+
 COPY --from=upstream /app/arcane-agent /usr/bin/arcane-agent
 COPY rootfs /
 
-# The agent has no --version flag, so only fix up permissions here; running it
-# would try to start the server during the build.
-RUN chmod +x /usr/bin/arcane-agent \
-    /etc/services.d/arcane-agent/run \
-    /etc/services.d/arcane-agent/finish
+# Some agent paths are fixed to /app/data rather than configurable (SSH
+# known_hosts for git, agent mTLS certificates), so point that at the app's
+# persistent /data folder as well. The agent has no --version flag, so nothing
+# here runs it; doing so would start the server during the build.
+RUN mkdir -p /app \
+    && ln -s /data /app/data \
+    && chmod +x /usr/bin/arcane-agent \
+        /etc/s6-overlay/s6-rc.d/arcane-agent/run \
+        /etc/s6-overlay/s6-rc.d/arcane-agent/finish
 
-# Build metadata, populated by the Home Assistant builder.
-ARG BUILD_ARCH
-ARG BUILD_DATE
-ARG BUILD_DESCRIPTION
-ARG BUILD_NAME
-ARG BUILD_REF
-ARG BUILD_REPOSITORY
-ARG BUILD_VERSION
 LABEL \
-    io.hass.name="${BUILD_NAME}" \
-    io.hass.description="${BUILD_DESCRIPTION}" \
-    io.hass.arch="${BUILD_ARCH}" \
-    io.hass.type="addon" \
-    io.hass.version="${BUILD_VERSION}" \
-    org.opencontainers.image.title="${BUILD_NAME}" \
-    org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.source="https://github.com/${BUILD_REPOSITORY}" \
-    org.opencontainers.image.created="${BUILD_DATE}" \
-    org.opencontainers.image.revision="${BUILD_REF}" \
-    org.opencontainers.image.version="${BUILD_VERSION}"
+    io.hass.type="app" \
+    org.opencontainers.image.title="Arcane Agent" \
+    org.opencontainers.image.description="Manage this machine's Docker containers from an Arcane manager" \
+    org.opencontainers.image.licenses="MIT"

@@ -11,21 +11,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    name: Build ${{ matrix.arch }}
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [aarch64, amd64]
+permissions:
+  contents: read
 
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    name: Read add-on information
+    outputs:
+      name: ${{ steps.info.outputs.name }}
+      description: ${{ steps.info.outputs.description }}
+      version: ${{ steps.info.outputs.version }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Get add-on information
         id: info
@@ -33,32 +32,45 @@ jobs:
         with:
           path: "./arcane_edge_agent"
 
-      # Pushes only happen for real commits on main; pull requests build with
-      # --test so nothing is published from an unmerged branch.
-      - name: Decide whether to publish
-        id: mode
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "args=--test" >> "$GITHUB_OUTPUT"
-          else
-            echo "args=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+  build:
+    needs: prepare
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+          - arch: amd64
+            os: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
-      - name: Build add-on
-        uses: home-assistant/builder@master
+      # Image names match config.yaml's image (ghcr.io/<owner>/hassio-arcane-edge-agent-{arch}),
+      # so existing installs keep pulling from the same, already public packages.
+      # Pull requests build without pushing; only commits on main publish.
+      - name: Build add-on image
+        uses: home-assistant/builder/actions/build-image@2026.09.0
         with:
-          args: |
-            ${{ steps.mode.outputs.args }} \
-            --${{ matrix.arch }} \
-            --target /data/arcane_edge_agent \
-            --image "hassio-arcane-edge-agent-{arch}" \
-            --docker-hub "ghcr.io/${{ github.repository_owner }}" \
-            --addon
+          arch: ${{ matrix.arch }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: "./arcane_edge_agent"
+          image: ghcr.io/${{ github.repository_owner }}/hassio-arcane-edge-agent-${{ matrix.arch }}
+          image-tags: |
+            ${{ needs.prepare.outputs.version }}
+            latest
+          labels: |
+            io.hass.type=app
+            io.hass.name=${{ needs.prepare.outputs.name }}
+            io.hass.description=${{ needs.prepare.outputs.description }}
+            io.hass.url=https://github.com/${{ github.repository }}
+          push: ${{ github.event_name != 'pull_request' }}
+          version: ${{ needs.prepare.outputs.version }}

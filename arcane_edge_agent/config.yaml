@@ -1,6 +1,6 @@
-# https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
-name: Arcane Edge Agent
-version: "3.0.1"
+# https://contributors.home-assistant.io/apps/reference/configuration/
+name: Arcane Agent
+version: "3.0.1.1"
 slug: arcane_edge_agent
 description: >-
   Manage this machine's Docker containers from an Arcane manager
@@ -16,12 +16,12 @@ docker_api: true
 options:
   manager_api_url: ""
   agent_token: ""
-  edge_transport: poll
+  agent_transport: auto
   log_level: info
   analytics: false
 schema:
   manager_api_url: url?
   agent_token: password?
-  edge_transport: list(poll|auto)
+  agent_transport: list(auto|grpc|websocket)
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   analytics: bool

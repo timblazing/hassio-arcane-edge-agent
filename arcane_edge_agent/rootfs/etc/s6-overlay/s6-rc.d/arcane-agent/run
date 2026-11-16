@@ -1,0 +1,165 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Start the Arcane agent
+# ==============================================================================
+
+declare manager_api_url
+declare agent_token
+declare agent_transport
+declare log_level
+declare docker_socket
+declare db_file="/data/arcane.db"
+
+bashio::log.info "Preparing to start the Arcane agent..."
+
+# ------------------------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------------------------
+if ! bashio::config.has_value 'manager_api_url'; then
+    bashio::exit.nok "'manager_api_url' is not set. Enter the address of your Arcane manager (for example http://10.1.1.4:3552) in the configuration."
+fi
+
+if ! bashio::config.has_value 'agent_token'; then
+    bashio::exit.nok "'agent_token' is not set. Add an agent in Arcane (Agents > Add Agent) and paste its token into the configuration."
+fi
+
+manager_api_url="$(bashio::config 'manager_api_url')"
+agent_token="$(bashio::config 'agent_token')"
+agent_transport="$(bashio::config 'agent_transport' 'auto')"
+
+# A trailing slash makes the agent build double-slashed API URLs against some
+# manager builds, so normalise it away before handing it over.
+manager_api_url="${manager_api_url%/}"
+
+if [[ "${manager_api_url}" != http://* && "${manager_api_url}" != https://* ]]; then
+    bashio::exit.nok "'manager_api_url' must start with http:// or https:// (got: ${manager_api_url})"
+fi
+
+# Pointing the agent at the manager running on this same machine would make it
+# try to pair with itself, which fails in a confusing way.
+if [[ "${manager_api_url}" == *"//localhost"* || "${manager_api_url}" == *"//127.0.0.1"* ]]; then
+    bashio::log.warning "'manager_api_url' points at localhost, which means this app itself, not your Arcane manager."
+    bashio::log.warning "Use the manager's address on your network, for example http://10.1.1.4:3552"
+fi
+
+if [[ "${agent_token}" != arc_* ]]; then
+    bashio::log.warning "The agent token does not start with 'arc_'; check that you copied the whole token."
+fi
+
+# Arcane only knows debug, info, warn and error, and silently treats anything
+# else as info, so translate the Home Assistant log levels.
+case "$(bashio::config 'log_level' 'info')" in
+    trace | debug) log_level="debug" ;;
+    warning) log_level="warn" ;;
+    error | fatal) log_level="error" ;;
+    *) log_level="info" ;;
+esac
+
+# ------------------------------------------------------------------------------
+# Docker socket
+# ------------------------------------------------------------------------------
+# Home Assistant mounts the socket at /run/docker.sock; on most images
+# /var/run is a symlink to /run, but accept either rather than assume.
+docker_socket=""
+for candidate in /run/docker.sock /var/run/docker.sock; do
+    if bashio::fs.socket_exists "${candidate}"; then
+        docker_socket="${candidate}"
+        break
+    fi
+done
+
+if bashio::var.is_empty "${docker_socket}"; then
+    bashio::log.error "The Docker socket is not available inside this app."
+    bashio::log.error "The agent needs it to manage this machine's containers."
+    bashio::exit.nok "Turn off Protection mode on this app's Info tab, then restart it."
+fi
+
+# ------------------------------------------------------------------------------
+# Persistent state
+# ------------------------------------------------------------------------------
+# /data is this app's own folder: Home Assistant always mounts it writable, it
+# survives updates, and it is included in backups. The image links /app/data
+# (the agent's built-in data folder) to it, and the paths below point there
+# explicitly too.
+if ! mkdir -p /data/projects /data/templates /data/git 2>/dev/null; then
+    bashio::exit.nok "Could not create the agent's folders under /data. Try restarting the app; if that does not help, reinstall it."
+fi
+
+if ! touch /data/.write-test 2>/dev/null; then
+    bashio::exit.nok "/data is not writable, so the agent cannot store its database. Try restarting the app; if that does not help, reinstall it."
+fi
+rm -f /data/.write-test
+
+# Arcane 3 only upgrades databases created or last opened by Arcane 2.17.1 or
+# later (schema version 94); anything older stops the agent at startup. That
+# happens when an install skips the 2.17.x releases. The agent's database only
+# holds local state it rebuilds after pairing again, so set the old one aside
+# rather than leave the app unable to start. Projects, templates and git
+# checkouts live in their own folders and are kept.
+if [[ -s "${db_file}" ]]; then
+    schema_version="$(sqlite3 -readonly "${db_file}" \
+        "SELECT COALESCE(MAX(version_id), 0) FROM goose_db_version WHERE is_applied;" 2>/dev/null || true)"
+    if [[ -z "${schema_version}" ]]; then
+        # No migration history: only a pre-2.17.1 database has Arcane tables
+        # without it.
+        if [[ "$(sqlite3 -readonly "${db_file}" \
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'settings';" 2>/dev/null || true)" == "1" ]]; then
+            schema_version="0"
+        fi
+    fi
+
+    if [[ "${schema_version}" =~ ^[0-9]+$ ]] && ((schema_version < 94)); then
+        backup_dir="/data/arcane-v2-database-$(date +%Y%m%d-%H%M%S)"
+        bashio::log.warning "The agent database was last used by an Arcane release older than 2.17.1, which Arcane 3 cannot upgrade."
+        bashio::log.warning "Moving it to ${backup_dir} and starting with a fresh database. Projects, templates and git checkouts are kept."
+        mkdir -p "${backup_dir}"
+        mv -f "${db_file}" "${db_file}-wal" "${db_file}-shm" "${backup_dir}/" 2>/dev/null || true
+        if [[ -e "${db_file}" ]]; then
+            bashio::exit.nok "Could not move the old database out of the way. Check the app's /data folder."
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# Environment
+# ------------------------------------------------------------------------------
+# Arcane 3 reads only ARCANE_-prefixed variables and refuses to start if it
+# finds the old unprefixed names, so never export those here.
+export ARCANE_AGENT="true"
+export ARCANE_MANAGER_API_URL="${manager_api_url}"
+export ARCANE_AGENT_TOKEN="${agent_token}"
+export ARCANE_AGENT_TRANSPORT="${agent_transport}"
+export ARCANE_LOG_LEVEL="${log_level}"
+export DOCKER_HOST="unix://${docker_socket}"
+
+# Inside a container the agent drops to its built-in non-root user (65532) and
+# then cannot write to /data, which Home Assistant owns as root. Apps run as
+# root by design, and root is also what the Docker socket needs, so pin the
+# runtime identity instead of letting it switch users.
+export PUID="0"
+export PGID="0"
+
+export ARCANE_DATABASE_URL="file:${db_file}?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_txlock=immediate"
+export ARCANE_PROJECTS_DIRECTORY="/data/projects"
+export ARCANE_TEMPLATES_DIRECTORY="/data/templates"
+export ARCANE_GIT_WORK_DIR="/data/git"
+
+# The agent sends an anonymous usage heartbeat upstream unless told not to.
+# Off unless the user opts in.
+if bashio::config.true 'analytics'; then
+    export ARCANE_ANALYTICS_ENABLED="true"
+else
+    export ARCANE_ANALYTICS_ENABLED="false"
+fi
+
+# ------------------------------------------------------------------------------
+# Start
+# ------------------------------------------------------------------------------
+bashio::log.info "Manager:       ${manager_api_url}"
+bashio::log.info "Transport:     ${agent_transport}"
+bashio::log.info "Docker socket: ${docker_socket}"
+bashio::log.info "Starting the Arcane agent..."
+
+cd /data || bashio::exit.nok "Could not enter /data"
+exec /usr/bin/arcane-agent

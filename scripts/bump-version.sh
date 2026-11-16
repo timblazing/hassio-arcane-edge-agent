@@ -2,8 +2,8 @@
 # ==============================================================================
 # Point the add-on at a different upstream Arcane release.
 #
-#   ./scripts/bump-version.sh 2.13.0        -> add-on 2.13.0
-#   ./scripts/bump-version.sh 2.13.0 1      -> add-on 2.13.0.1 (add-on-only fix)
+#   ./scripts/bump-version.sh 3.0.2        -> add-on 3.0.2
+#   ./scripts/bump-version.sh 3.0.2 1      -> add-on 3.0.2.1 (add-on-only fix)
 #
 # The add-on version tracks the upstream release it ships, with a fourth number
 # for changes to the add-on itself.
@@ -21,7 +21,7 @@ arcane_version="${1#v}"
 addon_revision="${2:-}"
 
 if [[ ! "${arcane_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "ERROR: '${arcane_version}' is not a version like 2.13.0" >&2
+    echo "ERROR: '${arcane_version}' is not a version like 3.0.2" >&2
     exit 1
 fi
 
@@ -49,7 +49,6 @@ fi
 
 sed -i.bak -E "s/^version: \".*\"$/version: \"${addon_version}\"/" arcane_edge_agent/config.yaml
 sed -i.bak -E "s/^ARG ARCANE_VERSION=\".*\"$/ARG ARCANE_VERSION=\"${arcane_version}\"/" arcane_edge_agent/Dockerfile
-sed -i.bak -E "s/^  ARCANE_VERSION: \".*\"$/  ARCANE_VERSION: \"${arcane_version}\"/" arcane_edge_agent/build.yaml
 rm -f arcane_edge_agent/*.bak
 
 echo

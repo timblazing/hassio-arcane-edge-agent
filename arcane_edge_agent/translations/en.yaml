@@ -7,18 +7,19 @@ configuration:
   agent_token:
     name: Agent token
     description: >-
-      The arc_... token Arcane showed you when you created the edge
-      environment.
-  edge_transport:
+      The arc_... token from Arcane (Agents > Add Agent). An enrollment
+      token (arc_etkn_...) or an existing agent's token both work.
+  agent_transport:
     name: Transport
     description: >-
-      How the agent reaches the manager. Keep this on poll if the manager
-      cannot open connections back to this machine, which is the usual case
-      behind NAT or a firewall.
+      How the agent connects to the manager. It always dials out, so it works
+      behind NAT and firewalls. auto uses gRPC and falls back to WebSocket;
+      choose websocket if a reverse proxy in front of the manager does not
+      pass HTTP/2, or if the manager URL has a path prefix.
   log_level:
     name: Log level
     description: >-
-      How much detail to write to the add-on log. Use debug when
+      How much detail to write to the log. Use debug when
       troubleshooting a connection problem.
   analytics:
     name: Send usage analytics

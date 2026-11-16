@@ -12,6 +12,7 @@ concurrency:
 permissions:
   contents: write
   actions: write
+  issues: write
 
 jobs:
   update:
@@ -19,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Find a newer stable release
         id: check
@@ -27,7 +28,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          pinned="$(sed -n 's/^  ARCANE_VERSION: "\(.*\)"$/\1/p' arcane_edge_agent/build.yaml)"
+          pinned="$(sed -n 's/^ARG ARCANE_VERSION="\(.*\)"$/\1/p' arcane_edge_agent/Dockerfile)"
           latest="$(gh release view --repo getarcaneapp/arcane --json tagName --jq '.tagName' | sed 's/^v//')"
 
           if [[ ! "$pinned" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -41,12 +42,34 @@ jobs:
 
           if [[ "$latest" == "$pinned" ]]; then
             echo "outdated=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${latest%%.*}" != "${pinned%%.*}" ]]; then
+            # A new major release renames settings and changes behaviour (3.0
+            # did both), so it needs a person to adapt the add-on first.
+            echo "Arcane $latest is a new major release; leaving it for a manual update."
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+            echo "major=true" >> "$GITHUB_OUTPUT"
           elif [[ "$(printf '%s\n%s\n' "$pinned" "$latest" | sort -V | tail -n 1)" == "$latest" ]]; then
             echo "outdated=true" >> "$GITHUB_OUTPUT"
           else
             echo "Latest upstream release is older than the bundled agent; skipping."
             echo "outdated=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Open an issue for a new major release
+        if: steps.check.outputs.major == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          set -euo pipefail
+          title="Arcane v${LATEST} needs a manual update"
+          if [[ -n "$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number')" ]]; then
+            echo "Issue already open."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "Arcane [v${LATEST}](https://github.com/getarcaneapp/arcane/releases/tag/v${LATEST}) is a new major release, so the daily workflow did not publish it automatically.
+
+          Check the upstream release notes and migration guide for renamed environment variables, removed options and database requirements, update the add-on to match, then run \`./scripts/bump-version.sh ${LATEST}\`."
 
       - name: Bump and publish the add-on version
         if: steps.check.outputs.outdated == 'true'
@@ -76,7 +99,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add arcane_edge_agent/Dockerfile arcane_edge_agent/build.yaml arcane_edge_agent/config.yaml arcane_edge_agent/CHANGELOG.md
+          git add arcane_edge_agent/Dockerfile arcane_edge_agent/config.yaml arcane_edge_agent/CHANGELOG.md
           git commit -m "Update Arcane agent to v${LATEST}"
           git push origin HEAD:main
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.0.1.1
+
+- Fix the agent failing to start since 3.0.0. Arcane 3 renamed its settings to
+  `ARCANE_`-prefixed names and refuses to start when it finds the old ones,
+  which this app was still setting.
+- Replace the `edge_transport` option with `agent_transport` (`auto`, `grpc`
+  or `websocket`, default `auto`). Arcane 3 removed the polling transport;
+  the agent still only dials out.
+- If the stored database predates Arcane 2.17.1, which Arcane 3 cannot
+  upgrade, move it to `/data/arcane-v2-database-<date>` and start fresh
+  instead of failing. Projects, templates and git checkouts are kept.
+- Keep SSH known hosts and agent mTLS certificates in `/data` so they survive
+  updates.
+- Map the `trace`, `notice` and `fatal` log levels to the nearest level Arcane
+  understands instead of falling back to `info`.
+- Rename the app to Arcane Agent, matching Arcane 3. The slug, image and
+  stored settings are unchanged.
+- Build on the Home Assistant Alpine 3.24 base image with the current
+  Home Assistant builder actions, and move to the s6-overlay v3 service layout.
+- Stop publishing new major Arcane releases automatically; open an issue
+  instead so the app can be adapted first.
+
 ## 3.0.1
 
 - Update the bundled Arcane agent to v3.0.1. [Upstream release notes](https://github.com/getarcaneapp/arcane/releases/tag/v3.0.1).
