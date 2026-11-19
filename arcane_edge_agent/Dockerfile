@@ -5,7 +5,7 @@
 # re-declared inside the stage that uses them, which is what Docker requires.
 # Supervisor no longer passes BUILD_FROM, so it needs a default.
 ARG BUILD_FROM=ghcr.io/home-assistant/base:3.24
-ARG ARCANE_VERSION="3.0.1"
+ARG ARCANE_VERSION="3.1.0"
 
 FROM ghcr.io/getarcaneapp/agent:v${ARCANE_VERSION} AS upstream
 

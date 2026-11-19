@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0
+
+- Update the bundled Arcane agent to v3.1.0. [Upstream release notes](https://github.com/getarcaneapp/arcane/releases/tag/v3.1.0).
+
 ## 3.0.1.1
 
 - Fix the agent failing to start since 3.0.0. Arcane 3 renamed its settings to
